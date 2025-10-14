@@ -1,0 +1,9 @@
+# EconSearch requirements
+fastapi
+uvicorn[standard]
+pydantic
+pypdf
+openai
+scikit-learn
+numpy
+python-dotenv

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EconSearch</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>EconSearch</h1>
+        <p>Ingest local PDFs and ask domain questions powered by your configured LLM.</p>
+    </header>
+
+    <main>
+        <section class="card">
+            <h2>Ingest PDFs</h2>
+            <p>Enter the directory containing PDF files. The server reads metadata only.</p>
+            <form id="ingest-form">
+                <label for="pdfDir">PDF directory path</label>
+                <input type="text" id="pdfDir" placeholder="D:\path\to\pdfs" required>
+                <label for="workers">Workers (optional)</label>
+                <input type="number" id="workers" min="1" placeholder="default">
+                <button type="submit">Ingest</button>
+            </form>
+            <div id="ingest-status" class="status"></div>
+        </section>
+
+        <section class="card">
+            <h2>Ask a Question</h2>
+            <form id="ask-form">
+                <label for="question">Question</label>
+                <textarea id="question" rows="4" placeholder="What drives capital structure choice?"></textarea>
+                <label for="topK">Maximum sources</label>
+                <input type="number" id="topK" min="1" max="10" value="3">
+                <button type="submit">Ask</button>
+            </form>
+            <div id="ask-status" class="status"></div>
+            <div id="answer-container" class="hidden">
+                <h3>Answer</h3>
+                <pre id="answer"></pre>
+                <h3>Keywords</h3>
+                <ul id="keywords"></ul>
+                <h3>Sources</h3>
+                <div id="sources"></div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <a href="https://github.com" target="_blank" rel="noopener">Docs</a>
+        <span>Powered by FastAPI + shubiaobiao LLM endpoint.</span>
+    </footer>
+
+    <script src="/static/app.js" defer></script>
+</body>
+</html>
