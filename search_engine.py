@@ -38,7 +38,7 @@ class PaperSearchEngine:
     @staticmethod
     def _compose_search_text(paper: Dict[str, object]) -> str:
         parts: List[str] = []
-        for key in ("title", "abstract"):
+        for key in ("title", "abstract", "journal"):
             value = paper.get(key)
             if value:
                 parts.append(str(value))
@@ -69,12 +69,15 @@ class PaperSearchEngine:
         return results
 
     @staticmethod
-    @lru_cache(maxsize=64)
-    def load_fulltext(pdf_path: str, max_pages: Optional[int] = None) -> str:
+    @lru_cache(maxsize=128)
+    def load_fulltext(
+        pdf_path: str, max_pages: Optional[int] = None, max_chars: Optional[int] = None
+    ) -> str:
         """Extract text from the referenced PDF. Cached to avoid repeated reads."""
         reader = PdfReader(pdf_path)
         pages = list(reader.pages)
         text_segments: List[str] = []
+        total_chars = 0
         for page in pages[: max_pages or len(pages)]:
             try:
                 text = page.extract_text() or ""
@@ -82,11 +85,19 @@ class PaperSearchEngine:
                 text = ""
             if text:
                 text_segments.append(text)
-        return "\n".join(text_segments)
+                total_chars += len(text)
+                if max_chars and total_chars >= max_chars:
+                    break
+        combined = "\n".join(text_segments)
+        if max_chars:
+            return combined[:max_chars]
+        return combined
 
 
 def batch_load_fulltexts(
-    papers: Iterable[Dict[str, object]], max_pages: Optional[int] = None
+    papers: Iterable[Dict[str, object]],
+    max_pages: Optional[int] = None,
+    max_chars: Optional[int] = None,
 ) -> List[str]:
     """Helper to load full texts for a list of paper metadata entries."""
     texts: List[str] = []
@@ -96,7 +107,9 @@ def batch_load_fulltexts(
             texts.append("")
             continue
         try:
-            text = PaperSearchEngine.load_fulltext(str(pdf_path), max_pages=max_pages)
+            text = PaperSearchEngine.load_fulltext(
+                str(pdf_path), max_pages=max_pages, max_chars=max_chars
+            )
         except Exception:
             text = ""
         texts.append(text)

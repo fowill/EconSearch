@@ -58,6 +58,7 @@ class Source(BaseModel):
     year: Optional[int] = None
     authors: List[str] = Field(default_factory=list)
     keywords: List[str] = Field(default_factory=list)
+    journal: Optional[str] = None
 
 
 class AskResponse(BaseModel):
@@ -94,11 +95,27 @@ def ingest(request: IngestRequest) -> IngestResponse:
 
 
 def _aggregate_search(question: str, top_k: int) -> Tuple[List[str], List[Dict[str, object]]]:
-    keywords = generate_keywords(question, n_keywords=max(4, top_k * 2))
+    requested = min(6, max(3, top_k + 2))
+    raw_keywords = generate_keywords(question, n_keywords=requested)
+    keywords: List[str] = []
+    seen: set[str] = set()
+    for kw in raw_keywords:
+        cleaned = kw.strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        keywords.append(cleaned)
+    if not keywords:
+        keywords = [question]
+
     engine = _get_engine()
     aggregated: Dict[str, Dict[str, object]] = {}
+    per_query_k = max(top_k, 4)
     for keyword in keywords:
-        hits = engine.search(keyword, top_k=top_k * 3)
+        hits = engine.search(keyword, top_k=per_query_k)
         for hit in hits:
             pdf_path = hit.get("pdf_path")
             if not pdf_path:
@@ -113,6 +130,7 @@ def _aggregate_search(question: str, top_k: int) -> Tuple[List[str], List[Dict[s
                         "year": hit.get("year"),
                         "authors": hit.get("authors", []),
                         "keywords": hit.get("keywords", []),
+                        "journal": hit.get("journal"),
                     },
                     "score": 0.0,
                 },
@@ -136,13 +154,14 @@ def ask(request: AskRequest) -> AskResponse:
     if not sorted_items:
         return AskResponse(answer="No relevant documents found.", keywords=keywords, sources=[])
     papers = [item["metadata"] for item in sorted_items]
-    full_texts = batch_load_fulltexts(papers, max_pages=12)
+    full_texts = batch_load_fulltexts(papers, max_pages=8, max_chars=8000)
 
     contexts: List[str] = []
     for meta, full_text in zip(papers, full_texts):
         head = [
             f"Title: {meta.get('title')}",
             f"Year: {meta.get('year')}",
+            f"Journal: {meta.get('journal')}" if meta.get("journal") else "Journal: Unknown",
             f"Authors: {', '.join(meta.get('authors', []))}" if meta.get("authors") else "Authors: Unknown",
             f"Keywords: {', '.join(meta.get('keywords', []))}" if meta.get("keywords") else "Keywords: None",
             "",
@@ -162,6 +181,7 @@ def ask(request: AskRequest) -> AskResponse:
             year=meta.get("year"),
             authors=meta.get("authors", []),
             keywords=meta.get("keywords", []),
+            journal=meta.get("journal"),
             score=float(sorted_items[idx]["score"]),
         )
         for idx, meta in enumerate(papers)

@@ -5,10 +5,8 @@ const askStatus = document.getElementById("ask-status");
 const answerContainer = document.getElementById("answer-container");
 const answerEl = document.getElementById("answer");
 const keywordsEl = document.getElementById("keywords");
-const timelineSection = document.getElementById("timeline-section");
 const timelineContainer = document.getElementById("timeline");
 const timelineItemsEl = document.getElementById("timeline-items");
-const sourceListEl = document.getElementById("sources-list");
 
 async function postJSON(url, payload) {
     const response = await fetch(url, {
@@ -67,18 +65,11 @@ askForm?.addEventListener("submit", async (event) => {
     askStatus.textContent = "Thinking...";
     askStatus.className = "status";
     answerContainer.classList.add("hidden");
-    if (timelineSection) {
-        timelineSection.classList.add("hidden");
-    }
     if (timelineContainer) {
         timelineContainer.classList.add("hidden");
     }
     if (timelineItemsEl) {
         timelineItemsEl.innerHTML = "";
-    }
-    if (sourceListEl) {
-        sourceListEl.classList.add("hidden");
-        sourceListEl.innerHTML = "";
     }
 
     try {
@@ -96,12 +87,11 @@ askForm?.addEventListener("submit", async (event) => {
             keywordsEl.appendChild(li);
         });
 
-        if (timelineItemsEl && timelineContainer && timelineSection && sourceListEl) {
+        if (timelineItemsEl && timelineContainer) {
             const sources = Array.isArray(result.sources) ? [...result.sources] : [];
             if (sources.length === 0) {
                 timelineItemsEl.innerHTML = "<p class=\"timeline-empty\">No sources returned.</p>";
-                timelineSection.classList.remove("hidden");
-                sourceListEl.classList.add("hidden");
+                timelineContainer.classList.remove("hidden");
             } else {
                 const sortedSources = sources.sort((a, b) => {
                     const yearA = typeof a.year === "number" ? a.year : Number.MAX_SAFE_INTEGER;
@@ -113,14 +103,14 @@ askForm?.addEventListener("submit", async (event) => {
                 });
 
                 timelineItemsEl.innerHTML = "";
-                sortedSources.forEach((source) => {
+                sortedSources.forEach((source, index) => {
                     const item = document.createElement("div");
                     item.className = "timeline-item";
 
                     const marker = document.createElement("div");
                     marker.className = "timeline-marker";
                     const markerLabel = document.createElement("span");
-                    markerLabel.textContent = source.year ? String(source.year) : "\u2014";
+                    markerLabel.textContent = source.year ? String(source.year) : "—";
                     marker.appendChild(markerLabel);
 
                     const content = document.createElement("div");
@@ -173,59 +163,7 @@ askForm?.addEventListener("submit", async (event) => {
                     timelineItemsEl.appendChild(item);
                 });
 
-                sourceListEl.innerHTML = "";
-                sortedSources.forEach((source) => {
-                    const card = document.createElement("div");
-                    card.className = "source-row";
-
-                    const title = document.createElement("h4");
-                    title.textContent = source.title || "Untitled";
-
-                    const meta = document.createElement("div");
-                    meta.className = "source-row-meta";
-
-                    const journalSpan = document.createElement("span");
-                    journalSpan.textContent = `Journal: ${source.journal || "Unknown"}`;
-
-                    const yearSpan = document.createElement("span");
-                    yearSpan.textContent = `Year: ${source.year ?? "N/A"}`;
-
-                    const authorSpan = document.createElement("span");
-                    const authorList = Array.isArray(source.authors) ? source.authors.filter(Boolean) : [];
-                    const limitedAuthors = authorList.slice(0, 6);
-                    const authorLabel = limitedAuthors.length
-                        ? limitedAuthors.join(", ") + (authorList.length > 6 ? " et al." : "")
-                        : "Unknown";
-                    authorSpan.textContent = `Authors: ${authorLabel}`;
-
-                    const scoreSpan = document.createElement("span");
-                    const score = typeof source.score === "number" ? source.score.toFixed(3) : "N/A";
-                    scoreSpan.textContent = `Similarity score: ${score}`;
-
-                    meta.appendChild(journalSpan);
-                    meta.appendChild(yearSpan);
-                    meta.appendChild(authorSpan);
-                    meta.appendChild(scoreSpan);
-
-                    const abstract = document.createElement("p");
-                    abstract.className = "source-row-abstract";
-                    abstract.textContent = source.abstract || "No abstract available.";
-
-                    const path = document.createElement("div");
-                    path.className = "source-row-path";
-                    path.innerHTML = `<strong>PDF:</strong> <code>${source.pdf_path || "Unknown path"}</code>`;
-
-                    card.appendChild(title);
-                    card.appendChild(meta);
-                    card.appendChild(abstract);
-                    card.appendChild(path);
-
-                    sourceListEl.appendChild(card);
-                });
-
-                timelineSection.classList.remove("hidden");
                 timelineContainer.classList.remove("hidden");
-                sourceListEl.classList.remove("hidden");
                 timelineContainer.scrollLeft = 0;
             }
         }
