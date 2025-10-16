@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
@@ -23,12 +24,62 @@ STATIC_DIR = BASE_DIR / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+SMALL_WORDS = {
+    "of",
+    "and",
+    "the",
+    "in",
+    "on",
+    "for",
+    "to",
+    "a",
+    "an",
+    "at",
+    "by",
+    "with",
+    "or",
+    "from",
+    "per",
+}
+
 
 def _get_engine(force_reload: bool = False) -> PaperSearchEngine:
     global _engine
     if force_reload or _engine is None:
         _engine = PaperSearchEngine(PAPER_INDEX_PATH)
     return _engine
+
+
+def _format_title_case(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return text
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+    tokens = re.split(r"(\s+)", stripped.lower())
+    result: List[str] = []
+    first_word = True
+    for token in tokens:
+        if not token:
+            continue
+        if token.isspace():
+            result.append(token)
+            continue
+        segments = token.split("-")
+        rebuilt = []
+        for idx, segment in enumerate(segments):
+            if not segment:
+                continue
+            lower = segment.lower()
+            capitalize = first_word or lower not in SMALL_WORDS
+            if capitalize:
+                rebuilt.append(lower[:1].upper() + lower[1:])
+            else:
+                rebuilt.append(lower)
+            first_word = False
+        result.append("-".join(rebuilt))
+        first_word = False
+    return "".join(result)
 
 
 class IngestRequest(BaseModel):
@@ -120,21 +171,27 @@ def _aggregate_search(question: str, top_k: int) -> Tuple[List[str], List[Dict[s
             pdf_path = hit.get("pdf_path")
             if not pdf_path:
                 continue
+            journal = hit.get("journal")
+            if isinstance(journal, str):
+                journal = _format_title_case(journal)
+            metadata = {
+                "title": hit.get("title", ""),
+                "pdf_path": pdf_path,
+                "abstract": hit.get("abstract", ""),
+                "year": hit.get("year"),
+                "authors": hit.get("authors", []),
+                "keywords": hit.get("keywords", []),
+                "journal": journal,
+            }
             entry = aggregated.setdefault(
                 pdf_path,
                 {
-                    "metadata": {
-                        "title": hit.get("title", ""),
-                        "pdf_path": pdf_path,
-                        "abstract": hit.get("abstract", ""),
-                        "year": hit.get("year"),
-                        "authors": hit.get("authors", []),
-                        "keywords": hit.get("keywords", []),
-                        "journal": hit.get("journal"),
-                    },
+                    "metadata": metadata,
                     "score": 0.0,
                 },
             )
+            if entry["metadata"].get("journal") in (None, "", "Unknown") and journal:
+                entry["metadata"]["journal"] = journal
             entry["score"] += float(hit.get("score", 0.0))
     sorted_hits = [
         item[1] for item in sorted(aggregated.items(), key=lambda kv: kv[1]["score"], reverse=True)[:top_k]
@@ -154,7 +211,7 @@ def ask(request: AskRequest) -> AskResponse:
     if not sorted_items:
         return AskResponse(answer="No relevant documents found.", keywords=keywords, sources=[])
     papers = [item["metadata"] for item in sorted_items]
-    full_texts = batch_load_fulltexts(papers, max_pages=8, max_chars=8000)
+    full_texts = batch_load_fulltexts(papers, max_pages=2, max_chars=8000)
 
     contexts: List[str] = []
     for meta, full_text in zip(papers, full_texts):

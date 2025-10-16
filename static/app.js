@@ -5,10 +5,16 @@ const askStatus = document.getElementById("ask-status");
 const answerContainer = document.getElementById("answer-container");
 const answerEl = document.getElementById("answer");
 const keywordsEl = document.getElementById("keywords");
-const timelineSection = document.getElementById("timeline-section");
-const timelineContainer = document.getElementById("timeline");
-const timelineItemsEl = document.getElementById("timeline-items");
 const sourceListEl = document.getElementById("sources-list");
+
+const askLogEl = document.getElementById("ask-log");
+
+let askProgressTimeouts = [];
+const askProgressSteps = [
+    { delay: 0, text: "Generating search keywords..." },
+    { delay: 1100, text: "Retrieving relevant papers..." },
+    { delay: 2000, text: "Summarizing with the language model..." }
+];
 
 async function postJSON(url, payload) {
     const response = await fetch(url, {
@@ -24,6 +30,62 @@ async function postJSON(url, payload) {
     }
     return response.json();
 }
+
+function clearAskProgressTimers() {
+    if (askProgressTimeouts.length) {
+        askProgressTimeouts.forEach((timer) => clearTimeout(timer));
+        askProgressTimeouts = [];
+    }
+}
+
+function resetAskLog() {
+    if (!askLogEl) {
+        return;
+    }
+    askLogEl.innerHTML = "";
+    askLogEl.classList.remove("hidden");
+}
+
+function appendLog(message, type = "info") {
+    if (!askLogEl) {
+        return;
+    }
+    askLogEl.classList.remove("hidden");
+    const entry = document.createElement("div");
+    entry.className = `log-entry ${type}`;
+    entry.textContent = message;
+    askLogEl.appendChild(entry);
+    askLogEl.scrollTop = askLogEl.scrollHeight;
+}
+
+function startAskProgress() {
+    clearAskProgressTimers();
+    resetAskLog();
+    appendLog("Question submitted. Waiting for server acknowledgement...", "info");
+    if (askStatus) {
+        askStatus.textContent = "Processing question...";
+        askStatus.className = "status info";
+    }
+    askProgressSteps.forEach((step) => {
+        const timer = setTimeout(() => {
+            appendLog(step.text, "info");
+            if (askStatus) {
+                askStatus.textContent = step.text;
+                askStatus.className = "status info";
+            }
+        }, step.delay);
+        askProgressTimeouts.push(timer);
+    });
+}
+
+function stopAskProgress(message, statusClass) {
+    clearAskProgressTimers();
+    if (askStatus) {
+        askStatus.textContent = message;
+        askStatus.className = statusClass;
+    }
+}
+
 
 ingestForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -59,23 +121,18 @@ askForm?.addEventListener("submit", async (event) => {
     const topK = Number(document.getElementById("topK").value) || 3;
 
     if (!question) {
-        askStatus.textContent = "Please enter a question.";
-        askStatus.className = "status error";
+        clearAskProgressTimers();
+        resetAskLog();
+        appendLog("Please enter a question before asking.", "error");
+        if (askStatus) {
+            askStatus.textContent = "Please enter a question.";
+            askStatus.className = "status error";
+        }
         return;
     }
 
-    askStatus.textContent = "Thinking...";
-    askStatus.className = "status";
+    startAskProgress();
     answerContainer.classList.add("hidden");
-    if (timelineSection) {
-        timelineSection.classList.add("hidden");
-    }
-    if (timelineContainer) {
-        timelineContainer.classList.add("hidden");
-    }
-    if (timelineItemsEl) {
-        timelineItemsEl.innerHTML = "";
-    }
     if (sourceListEl) {
         sourceListEl.classList.add("hidden");
         sourceListEl.innerHTML = "";
@@ -84,25 +141,29 @@ askForm?.addEventListener("submit", async (event) => {
     try {
         const result = await postJSON("/ask", { question, top_k: topK });
 
-        askStatus.textContent = "Got an answer.";
-        askStatus.className = "status success";
+        stopAskProgress("Answer ready.", "status success");
+
+        const keywords = Array.isArray(result.keywords) ? result.keywords : [];
+        const keywordPreview = keywords.slice(0, 3).join(", ") + (keywords.length > 3 ? ", ..." : "");
+        appendLog(`Keywords ready (${keywords.length || 0}): ${keywordPreview || "None"}`, "success");
 
         answerEl.textContent = result.answer || "No answer returned.";
 
         keywordsEl.innerHTML = "";
-        (result.keywords || []).forEach((kw) => {
+        keywords.forEach((kw) => {
             const li = document.createElement("li");
             li.textContent = kw;
             keywordsEl.appendChild(li);
         });
 
-        if (timelineItemsEl && timelineContainer && timelineSection && sourceListEl) {
+        if (sourceListEl) {
             const sources = Array.isArray(result.sources) ? [...result.sources] : [];
             if (sources.length === 0) {
-                timelineItemsEl.innerHTML = "<p class=\"timeline-empty\">No sources returned.</p>";
-                timelineSection.classList.remove("hidden");
-                sourceListEl.classList.add("hidden");
+                appendLog("No matching papers found for this query.", "info");
+                sourceListEl.innerHTML = '<p class="source-row-meta">No sources returned.</p>';
+                sourceListEl.classList.remove("hidden");
             } else {
+                appendLog(`Retrieved ${sources.length} candidate papers.`, "success");
                 const sortedSources = sources.sort((a, b) => {
                     const yearA = typeof a.year === "number" ? a.year : Number.MAX_SAFE_INTEGER;
                     const yearB = typeof b.year === "number" ? b.year : Number.MAX_SAFE_INTEGER;
@@ -110,67 +171,6 @@ askForm?.addEventListener("submit", async (event) => {
                         return (b.score || 0) - (a.score || 0);
                     }
                     return yearA - yearB;
-                });
-
-                timelineItemsEl.innerHTML = "";
-                sortedSources.forEach((source) => {
-                    const item = document.createElement("div");
-                    item.className = "timeline-item";
-
-                    const marker = document.createElement("div");
-                    marker.className = "timeline-marker";
-                    const markerLabel = document.createElement("span");
-                    markerLabel.textContent = source.year ? String(source.year) : "\u2014";
-                    marker.appendChild(markerLabel);
-
-                    const content = document.createElement("div");
-                    content.className = "timeline-content";
-
-                    const title = document.createElement("h4");
-                    title.textContent = source.title || "Untitled";
-
-                    const meta = document.createElement("div");
-                    meta.className = "timeline-meta";
-
-                    const yearSpan = document.createElement("span");
-                    yearSpan.textContent = `Year: ${source.year ?? "N/A"}`;
-
-                    const journalSpan = document.createElement("span");
-                    journalSpan.textContent = `Journal: ${source.journal || "Unknown"}`;
-
-                    const authorSpan = document.createElement("span");
-                    const authorList = Array.isArray(source.authors) ? source.authors.filter(Boolean) : [];
-                    const limitedAuthors = authorList.slice(0, 4);
-                    const authorLabel = limitedAuthors.length
-                        ? limitedAuthors.join(", ") + (authorList.length > 4 ? " et al." : "")
-                        : "Unknown";
-                    authorSpan.textContent = `Authors: ${authorLabel}`;
-
-                    const scoreSpan = document.createElement("span");
-                    const score = typeof source.score === "number" ? source.score.toFixed(3) : "N/A";
-                    scoreSpan.textContent = `Similarity score: ${score}`;
-
-                    meta.appendChild(yearSpan);
-                    meta.appendChild(journalSpan);
-                    meta.appendChild(authorSpan);
-                    meta.appendChild(scoreSpan);
-
-                    const abstract = document.createElement("p");
-                    abstract.className = "timeline-abstract";
-                    abstract.textContent = source.abstract || "No abstract available.";
-
-                    const path = document.createElement("div");
-                    path.className = "timeline-path";
-                    path.innerHTML = `<strong>PDF:</strong> <code>${source.pdf_path || "Unknown path"}</code>`;
-
-                    content.appendChild(title);
-                    content.appendChild(meta);
-                    content.appendChild(abstract);
-                    content.appendChild(path);
-
-                    item.appendChild(marker);
-                    item.appendChild(content);
-                    timelineItemsEl.appendChild(item);
                 });
 
                 sourceListEl.innerHTML = "";
@@ -223,16 +223,15 @@ askForm?.addEventListener("submit", async (event) => {
                     sourceListEl.appendChild(card);
                 });
 
-                timelineSection.classList.remove("hidden");
-                timelineContainer.classList.remove("hidden");
                 sourceListEl.classList.remove("hidden");
-                timelineContainer.scrollLeft = 0;
             }
         }
 
+        appendLog("Answer summarized and displayed.", "success");
         answerContainer.classList.remove("hidden");
     } catch (error) {
-        askStatus.textContent = `Failed to answer: ${error.message}`;
-        askStatus.className = "status error";
+        stopAskProgress(`Failed to answer: ${error.message}`, "status error");
+        appendLog(`Error: ${error.message}`, "error");
     }
 });
+

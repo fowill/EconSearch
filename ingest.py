@@ -140,6 +140,24 @@ ROMAN_NUMERALS = {
     "x",
 }
 
+SMALL_WORDS = {
+    "of",
+    "and",
+    "the",
+    "in",
+    "on",
+    "for",
+    "to",
+    "a",
+    "an",
+    "at",
+    "by",
+    "with",
+    "or",
+    "from",
+    "per",
+}
+
 
 def _normalize_token(token: str) -> str:
     base = token.strip()
@@ -175,6 +193,37 @@ def _normalize_author_name(name: str) -> Optional[str]:
             normalized_parts.append(normalized)
     normalized_name = " ".join(normalized_parts).strip(" ,;")
     return normalized_name or None
+
+
+def _smart_title_case(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+    tokens = re.split(r"(\s+)", text.lower())
+    result: List[str] = []
+    first_word = True
+    for token in tokens:
+        if not token:
+            continue
+        if token.isspace():
+            result.append(token)
+            continue
+        parts = token.split("-")
+        new_parts = []
+        for idx, part in enumerate(parts):
+            if not part:
+                continue
+            lower = part.lower()
+            capitalize = first_word or lower not in SMALL_WORDS
+            if capitalize:
+                new_part = lower[:1].upper() + lower[1:]
+            else:
+                new_part = lower
+            new_parts.append(new_part)
+            first_word = False
+        result.append("-".join(new_parts))
+        first_word = False
+    return "".join(result)
 
 
 def _parse_year(meta: Dict[str, object]) -> Optional[int]:
@@ -491,6 +540,9 @@ def _extract_metadata_from_preview(
     if not abstract:
         abstract = preview[:1500]
     abstract = _normalize_abstract_text(abstract)
+
+    if journal:
+        journal = _smart_title_case(journal)
 
     return resolved_title, authors, abstract, journal
 
