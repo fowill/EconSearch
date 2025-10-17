@@ -3,7 +3,7 @@ from typing import Iterable, List
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 try:
     from openai import OpenAI
@@ -119,13 +119,20 @@ def answer_with_context(question: str, contexts: Iterable[str]) -> str:
             [
                 {
                     "role": "system",
-                    "content": "You are an academic assistant. Answer with concise, well-structured paragraphs.",
+                    "content": (
+                        "You are an academic assistant. Provide every response bilingually: "
+                        "first write the complete English answer, then provide a faithful Simplified Chinese translation. "
+                        "Preserve structure (headings, bullet points) across both languages."
+                    ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Use only the information in the sources to answer the user's question. "
-                        "Cite sources inline using [Source X].\n\n"
+                        "Use only the information in the sources to answer the user's question. Cite sources inline using [Source X].\n"
+                        "Produce a bilingual response with the following structure (keep headings exactly as shown):\n\n"
+                        "English:\nOverview: <one paragraph synthesizing what the retrieved papers collectively address>\nPapers:\n- [Source X Title] (Source X): <2-3 sentence summary highlighting contribution and evidence>\n- ...\n\n"
+                        "Chinese:\n概述：<用中文概括这些文献共同讨论的问题>\n文献：\n- [Source X 标题]（Source X）：<用中文概述该文献的核心贡献>\n- ...\n\n"
+                        "Ensure the Chinese section is a faithful, fluent translation of the English section (not word-for-word).\n\n"
                         f"Sources:\n{context_blocks}\n\nQuestion:\n{question}"
                     ),
                 },
@@ -143,9 +150,12 @@ def summarize_document(title: str, text: str, max_tokens: int = 700) -> str:
     if not cleaned:
         return "No content available to summarize."
     prompt = (
-        "You are an expert academic summarizer. Provide a concise, structured summary for the paper below. "
-        "Highlight the research question, methodology, key findings, and any notable limitations. "
-        "Use short paragraphs and bullet points when appropriate.\n\n"
+        "You are an expert academic summarizer. Produce a concise, structured summary for the paper below. "
+        "First explain in one paragraph what overarching problem or question the paper tackles, then briefly cover its approach and findings. "
+        "Write the summary bilingually with this structure (keep headings exact):\n\n"
+        "English:\nOverview: <what topic/question the paper investigates>\nHighlights:\n- Method & Data: <one bullet>\n- Key Findings: <one bullet>\n- Limitations: <optional bullet if present>\n\n"
+        "Chinese:\n概述：<论文关注的核心问题>\n要点：\n- 方法与数据：<一条中文摘要>\n- 主要结论：<一条中文摘要>\n- 局限性：<如有则简述>\n\n"
+        "Ensure the Chinese section is a fluent translation of the English section.\n\n"
         f"Title: {title}\n\n"
         f"Full Text:\n{cleaned}"
     )

@@ -21,6 +21,28 @@ pip install -r requirements.txt
 
 Configuration
 -------------
+Here is an example `.env` configuration that covers both supported providers:
+
+```ini
+# Choose the provider to talk to: shubiaobiao | deepseek
+LLM_PROVIDER=shubiaobiao
+
+# Shared secret key (required for either provider)
+OPENAI_API_KEY=sk-your-real-key
+
+# Provider defaults (change only if you need a different endpoint/model)
+SHUBIAOBIAO_BASE_URL=https://api.shubiaobiao.cn/v1/
+SHUBIAOBIAO_MODEL=gpt-4o-mini
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1/
+DEEPSEEK_MODEL=deepseek-chat
+
+# Optional explicit overrides (normally leave blank)
+OPENAI_BASE_URL=
+OPENAI_MODEL=
+```
+
+Set `LLM_PROVIDER` to `deepseek` if you want to switch. Restart the app after editing `.env` so the new values are picked up.
+
 Copy `.env.example` to `.env` (or export the variables manually) and fill in your private values:
 
 ```
