@@ -10,10 +10,34 @@ try:
 except ImportError:  # pragma: no cover - handled via fallback
     OpenAI = None
 
+PROVIDER_CONFIG = {
+    "shubiaobiao": {
+        "base_url": os.getenv("SHUBIAOBIAO_BASE_URL", "https://api.shubiaobiao.cn/v1/"),
+        "model": os.getenv("SHUBIAOBIAO_MODEL", "gpt-4o-mini"),
+    },
+    "deepseek": {
+        "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1/"),
+        "model": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+    },
+}
 
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+def _resolve_llm_config():
+    provider = os.getenv("LLM_PROVIDER", "shubiaobiao").strip().lower()
+    provider_cfg = PROVIDER_CONFIG.get(provider)
+    if not provider_cfg:
+        raise RuntimeError(f"Unsupported LLM_PROVIDER '{provider}'. Configure PROVIDER_CONFIG or adjust .env.")
+
+    base_url = os.getenv("OPENAI_BASE_URL") or provider_cfg["base_url"]
+    model = os.getenv("OPENAI_MODEL") or provider_cfg["model"]
+
+    if not base_url or not model:
+        raise RuntimeError("LLM configuration incomplete. Check your .env settings.")
+
+    return provider, base_url.rstrip("/") + "/", model
+
+
+LLM_PROVIDER, BASE_URL, DEFAULT_MODEL = _resolve_llm_config()
 API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.shubiaobiao.cn/v1/").rstrip("/") + "/"
 
 _client = None
 
