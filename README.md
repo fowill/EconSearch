@@ -71,6 +71,34 @@ micromamba run -n econsearch uvicorn app:app --host 0.0.0.0 --port 8000
 
 Opening `http://localhost:8000/` loads a lightweight web UI that lets you trigger ingestion and ask questions without crafting manual HTTP calls.
 
+Docker
+------
+You can containerise everything for one-command deployment.
+
+1. Build the image:
+   ```bash
+   docker build -t econsearch .
+   ```
+2. Run ingestion (mount your PDFs into the container):
+   ```bash
+   docker run --rm \
+     --env-file .env \
+     -v /absolute/path/to/pdfs:/data/pdfs \
+     -v "$(pwd)/storage:/app/storage" \
+     econsearch \
+     python ingest.py --pdf-dir /data/pdfs --out storage/paper_index.json
+   ```
+3. Start the API/UI:
+   ```bash
+   docker run --rm \
+     --env-file .env \
+     -p 8000:8000 \
+     -v "$(pwd)/storage:/app/storage" \
+     econsearch
+   ```
+
+The `storage/` directory is mounted so the paper index persists between runs. Swap `/absolute/path/to/pdfs` for your real PDF directory.
+
 Available endpoints:
 
 - `GET /` : single-page UI for ingestion and Q&A.
