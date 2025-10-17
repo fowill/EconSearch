@@ -212,6 +212,18 @@ button:hover {
     overflow-wrap: anywhere;
 }
 
+.source-summary-link {
+    margin-top: 0.6rem;
+    display: inline-block;
+    color: #2563eb;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.source-summary-link:hover {
+    text-decoration: underline;
+}
+
 .hidden {
     display: none;
 }

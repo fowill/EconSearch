@@ -220,6 +220,16 @@ askForm?.addEventListener("submit", async (event) => {
                     card.appendChild(abstract);
                     card.appendChild(path);
 
+                    if (source.pdf_path) {
+                        const summaryLink = document.createElement("a");
+                        summaryLink.href = `/summary?path=${encodeURIComponent(source.pdf_path)}`;
+                        summaryLink.target = "_blank";
+                        summaryLink.rel = "noopener";
+                        summaryLink.className = "source-summary-link";
+                        summaryLink.textContent = "Open LLM summary";
+                        card.appendChild(summaryLink);
+                    }
+
                     sourceListEl.appendChild(card);
                 });
 

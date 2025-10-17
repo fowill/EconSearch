@@ -113,4 +113,29 @@ def answer_with_context(question: str, contexts: Iterable[str]) -> str:
         return f"(LLM unavailable) Unable to answer due to: {exc}"
 
 
-__all__ = ["generate_keywords", "answer_with_context"]
+def summarize_document(title: str, text: str, max_tokens: int = 700) -> str:
+    """Produce a concise summary for an entire document."""
+    cleaned = text.strip()
+    if not cleaned:
+        return "No content available to summarize."
+    prompt = (
+        "You are an expert academic summarizer. Provide a concise, structured summary for the paper below. "
+        "Highlight the research question, methodology, key findings, and any notable limitations. "
+        "Use short paragraphs and bullet points when appropriate.\n\n"
+        f"Title: {title}\n\n"
+        f"Full Text:\n{cleaned}"
+    )
+    try:
+        return _run_chat(
+            [
+                {"role": "system", "content": "You summarize academic papers clearly and accurately."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.35,
+            max_tokens=max_tokens,
+        )
+    except Exception as exc:
+        return f"(LLM unavailable) Unable to summarize due to: {exc}"
+
+
+__all__ = ["generate_keywords", "answer_with_context", "summarize_document"]

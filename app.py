@@ -1,15 +1,16 @@
 from pathlib import Path
 import re
+from html import escape
 from typing import Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ingest import ingest_folder
-from llm import answer_with_context, generate_keywords
+from llm import answer_with_context, generate_keywords, summarize_document
 from search_engine import PaperSearchEngine, batch_load_fulltexts
 from settings import PAPER_INDEX_PATH
 
@@ -80,6 +81,22 @@ def _format_title_case(text: Optional[str]) -> Optional[str]:
         result.append("-".join(rebuilt))
         first_word = False
     return "".join(result)
+
+
+def _find_metadata_for_path(pdf_path: Path) -> Optional[Dict[str, object]]:
+    engine = _get_engine()
+    target = str(pdf_path)
+    for paper in engine.papers:
+        candidate = paper.get("pdf_path")
+        if not candidate:
+            continue
+        try:
+            candidate_path = str(Path(candidate).resolve())
+        except Exception:
+            candidate_path = str(Path(candidate))
+        if candidate_path == target:
+            return paper
+    return None
 
 
 class IngestRequest(BaseModel):
@@ -211,7 +228,7 @@ def ask(request: AskRequest) -> AskResponse:
     if not sorted_items:
         return AskResponse(answer="No relevant documents found.", keywords=keywords, sources=[])
     papers = [item["metadata"] for item in sorted_items]
-    full_texts = batch_load_fulltexts(papers, max_pages=2, max_chars=8000)
+    full_texts = batch_load_fulltexts(papers, max_pages=4, max_chars=8000)
 
     contexts: List[str] = []
     for meta, full_text in zip(papers, full_texts):
@@ -246,6 +263,80 @@ def ask(request: AskRequest) -> AskResponse:
 
     return AskResponse(answer=answer, keywords=keywords, sources=sources)
 
+
+
+@app.get("/summary", response_class=HTMLResponse)
+def render_summary(path: str) -> HTMLResponse:
+    if not path:
+        raise HTTPException(status_code=400, detail="Missing path parameter.")
+    try:
+        pdf_path = Path(path).expanduser().resolve()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path parameter.")
+
+    metadata = _find_metadata_for_path(pdf_path)
+    if metadata is None:
+        raise HTTPException(status_code=404, detail="Paper not found in current index.")
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="PDF not found on disk.")
+
+    try:
+        text = PaperSearchEngine.load_fulltext(str(pdf_path), max_pages=None, max_chars=40000)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read PDF: {exc}")
+
+    title = metadata.get("title") or pdf_path.stem
+    journal = metadata.get("journal") or "Unknown"
+    journal_fmt = _format_title_case(journal) if journal else "Unknown"
+    year = metadata.get("year") or "N/A"
+    authors = metadata.get("authors") or []
+    authors_display = ", ".join(authors) if authors else "Unknown"
+
+    summary_text = summarize_document(title, text)
+    summary_html = escape(summary_text).replace("\n", "<br>")
+
+    html_content = f"""<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"utf-8\">
+    <title>Summary | {escape(title)}</title>
+    <link rel=\"stylesheet\" href=\"/static/styles.css\">
+    <style>
+        body {{ background: #f4f6fb; margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+        .summary-container {{ max-width: 900px; margin: 2rem auto; background: #ffffff; border-radius: 12px; padding: 2rem 2.5rem; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12); }}
+        .summary-actions {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }}
+        .summary-actions a {{ color: #2563eb; font-weight: 600; text-decoration: none; }}
+        .summary-actions a:hover {{ text-decoration: underline; }}
+        .summary-meta {{ color: #475569; font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.8rem; }}
+        .summary-text {{ line-height: 1.65; color: #1f2937; background: #f8fafc; border-radius: 12px; padding: 1.3rem; border: 1px solid #e2e8f0; }}
+        .summary-text code {{ background: rgba(15, 23, 42, 0.06); padding: 0.1rem 0.3rem; border-radius: 4px; }}
+    </style>
+</head>
+<body>
+    <div class=\"summary-container\">
+        <div class=\"summary-actions\">
+            <a href=\"/\">&#8592; Back to search</a>
+            <a href=\"#\" onclick=\"window.close(); return false;\">Close tab</a>
+        </div>
+        <h1>{escape(title)}</h1>
+        <p class=\"summary-meta\">
+            <span><strong>Journal:</strong> {escape(journal_fmt)}</span>
+            <span><strong>Year:</strong> {escape(str(year))}</span>
+            <span><strong>Authors:</strong> {escape(authors_display)}</span>
+        </p>
+        <section>
+            <h2>LLM Summary</h2>
+            <div class=\"summary-text\">{summary_html}</div>
+        </section>
+        <section style=\"margin-top: 1.5rem;\">
+            <h2>Document</h2>
+            <p><strong>PDF path:</strong> <code>{escape(str(pdf_path))}</code></p>
+        </section>
+    </div>
+</body>
+</html>"""
+
+    return HTMLResponse(content=html_content)
 
 @app.post("/reload")
 def reload_index() -> Dict[str, str]:
