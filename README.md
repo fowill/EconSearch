@@ -39,19 +39,10 @@ DEEPSEEK_MODEL=deepseek-chat
 # Optional explicit overrides (normally leave blank)
 OPENAI_BASE_URL=
 OPENAI_MODEL=
+DEFAULT_PDF_DIR=/data/pdfs
 ```
 
 Set `LLM_PROVIDER` to `deepseek` if you want to switch. Restart the app after editing `.env` so the new values are picked up.
-
-Copy `.env.example` to `.env` (or export the variables manually) and fill in your private values:
-
-```
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.shubiaobiao.cn/v1/
-OPENAI_MODEL=gpt-4o-mini
-```
-
-All secrets are read from the environment at runtime, so nothing sensitive needs to live in the codebase.
 
 Ingestion
 ---------
@@ -73,31 +64,73 @@ Opening `http://localhost:8000/` loads a lightweight web UI that lets you trigge
 
 Docker
 ------
-You can containerise everything for one-command deployment.
+The container workflow lets you ship or reproduce the project quickly. Below is a complete walkthrough assuming Docker Desktop is installed.
 
-1. Build the image:
-   ```bash
-   docker build -t econsearch .
-   ```
-2. Run ingestion (mount your PDFs into the container):
-   ```bash
-   docker run --rm \
-     --env-file .env \
-     -v /absolute/path/to/pdfs:/data/pdfs \
-     -v "$(pwd)/storage:/app/storage" \
-     econsearch \
-     python ingest.py --pdf-dir /data/pdfs --out storage/paper_index.json
-   ```
-3. Start the API/UI:
-   ```bash
-   docker run --rm \
-     --env-file .env \
-     -p 8000:8000 \
-     -v "$(pwd)/storage:/app/storage" \
-     econsearch
-   ```
+### 1. Prepare configuration
 
-The `storage/` directory is mounted so the paper index persists between runs. Swap `/absolute/path/to/pdfs` for your real PDF directory.
+1. Copy `.env.example` to `.env` and fill in your keys.
+2. For container usage set `DEFAULT_PDF_DIR` to the path inside the container (the guide below uses `/data/pdfs`).
+3. Ensure your local PDF directory exists; we will bind mount it later.
+
+### 2. Build the image
+
+```bash
+docker build -t econsearch .
+```
+
+### 3. One-off ingestion inside Docker
+
+Mount your host PDF folder to `/data/pdfs` and the `storage/` folder so the generated index persists:
+
+```powershell
+# PowerShell syntax (use backticks for line continuation)
+docker run --rm `
+  --env-file .env `
+  -v "D:\LLM_Agents\JF_papers\all_pdfs:/data/pdfs" `
+  -v "${PWD}\storage:/app/storage" `
+  econsearch `
+  python ingest.py --pdf-dir /data/pdfs --out storage/paper_index.json
+```
+
+```bash
+# Bash/Zsh syntax
+docker run --rm \
+  --env-file .env \
+  -v /absolute/path/to/pdfs:/data/pdfs \
+  -v "$(pwd)/storage:/app/storage" \
+  econsearch \
+  python ingest.py --pdf-dir /data/pdfs --out storage/paper_index.json
+```
+
+### 4. Run the API/UI service
+
+Re-use the same mounts when starting the web app. With `DEFAULT_PDF_DIR=/data/pdfs` configured you can leave the PDF field blank in the UI and the backend will use the mounted directory.
+
+```powershell
+docker run --rm `
+  --env-file .env `
+  -p 8000:8000 `
+  -v "D:\LLM_Agents\JF_papers\all_pdfs:/data/pdfs" `
+  -v "${PWD}\storage:/app/storage" `
+  econsearch
+```
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -p 8000:8000 \
+  -v /absolute/path/to/pdfs:/data/pdfs \
+  -v "$(pwd)/storage:/app/storage" \
+  econsearch
+```
+
+Now browse to `http://localhost:8000/`.
+
+### 5. Tips
+
+- `storage/` keeps the `paper_index.json` persistent. You can mount another location if desired.
+- If you want to ingest from a different folder temporarily, type the container path (e.g. `/data/other`) into the UI before clicking **Ingest**; Windows paths will not work inside Docker.
+- To check the mount inside a running container: `docker exec -it <container_id> ls /data/pdfs`.
 
 Available endpoints:
 
@@ -112,5 +145,5 @@ Implementation Notes
 --------------------
 - `ingest.py` extracts metadata via `pypdf` and writes a lightweight JSON index.
 - `search_engine.py` performs TF-IDF search over the metadata and loads full text lazily.
-- `llm.py` wraps the shubiaobiao OpenAI-compatible API for keyword expansion and answering.
+- `llm.py` wraps the configured OpenAI-compatible API for keyword expansion and answering.
 - `app.py` exposes the FastAPI endpoints and now serves the static UI in `static/`.

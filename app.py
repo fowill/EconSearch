@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from ingest import ingest_folder
 from llm import answer_with_context, generate_keywords, summarize_document
 from search_engine import PaperSearchEngine, batch_load_fulltexts
-from settings import PAPER_INDEX_PATH
+from settings import PAPER_INDEX_PATH, DEFAULT_PDF_DIR
 
 load_dotenv()
 
@@ -100,7 +100,7 @@ def _find_metadata_for_path(pdf_path: Path) -> Optional[Dict[str, object]]:
 
 
 class IngestRequest(BaseModel):
-    pdf_dir: str = Field(..., description="Directory containing PDF files to ingest.")
+    pdf_dir: Optional[str] = Field(None, description="Directory containing PDF files to ingest.")
     workers: Optional[int] = Field(
         None, description="Number of worker processes to use for ingestion."
     )
@@ -157,7 +157,16 @@ def info() -> Dict[str, str]:
 
 @app.post("/ingest", response_model=IngestResponse)
 def ingest(request: IngestRequest) -> IngestResponse:
-    ingest_folder(request.pdf_dir, PAPER_INDEX_PATH, workers=request.workers)
+    pdf_dir = request.pdf_dir or (str(DEFAULT_PDF_DIR) if DEFAULT_PDF_DIR else None)
+    if not pdf_dir:
+        raise HTTPException(status_code=400, detail="PDF directory not provided. Supply a path or set DEFAULT_PDF_DIR.")
+    try:
+        pdf_path_obj = Path(pdf_dir).expanduser().resolve()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid PDF directory path.")
+    if not pdf_path_obj.exists():
+        raise HTTPException(status_code=404, detail=f"PDF directory not found: {pdf_dir}")
+    ingest_folder(str(pdf_path_obj), PAPER_INDEX_PATH, workers=request.workers)
     engine = _get_engine(force_reload=True)
     return IngestResponse(total_papers=len(engine.papers), index_path=str(PAPER_INDEX_PATH))
 

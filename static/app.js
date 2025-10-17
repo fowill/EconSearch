@@ -93,16 +93,15 @@ ingestForm?.addEventListener("submit", async (event) => {
     const workersValue = document.getElementById("workers").value.trim();
 
     if (!pdfDir) {
-        ingestStatus.textContent = "Please provide a PDF directory path.";
-        ingestStatus.className = "status error";
-        return;
+        ingestStatus.textContent = "Using DEFAULT_PDF_DIR from server configuration...";
+        ingestStatus.className = "status info";
+    } else {
+        ingestStatus.textContent = "Ingesting...";
+        ingestStatus.className = "status";
     }
 
-    ingestStatus.textContent = "Ingesting...";
-    ingestStatus.className = "status";
-
     try {
-        const payload = { pdf_dir: pdfDir };
+        const payload = { pdf_dir: pdfDir || null };
         if (workersValue) {
             payload.workers = Number(workersValue);
         }
